@@ -263,6 +263,22 @@ FRONTEND_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
+@app.get("/style.css")
+def serve_css():
+    css_file = FRONTEND_DIR / "style.css"
+    if css_file.exists():
+        return FileResponse(str(css_file), media_type="text/css")
+    return Response(status_code=404)
+
+
+@app.get("/app.js")
+def serve_js():
+    js_file = FRONTEND_DIR / "app.js"
+    if js_file.exists():
+        return FileResponse(str(js_file), media_type="application/javascript")
+    return Response(status_code=404)
+
+
 @app.get("/")
 def serve_index():
     index_file = FRONTEND_DIR / "index.html"

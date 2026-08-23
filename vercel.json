@@ -1,13 +1,10 @@
 {
+  "outputDirectory": "frontend",
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/static/(.*)",
-      "destination": "/frontend/$1"
-    },
-    {
-      "source": "/((?!frontend/).*)",
-      "destination": "/frontend/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
