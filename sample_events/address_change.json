@@ -1,0 +1,30 @@
+{
+  "event_id": "evt-0002",
+  "event_type": "FIELD_CHANGE",
+  "employee_id": "emp_1002",
+  "source_system": "ASHBY",
+  "changed_fields": {
+    "address": {
+      "old_value": {"line1": "45 Residency Rd", "line2": null, "city": "Bengaluru",
+                     "state": "KA", "postal_code": "560025", "country": "IN"},
+      "new_value": {"line1": "77 Indiranagar 100ft Rd", "line2": "Apt 4B",
+                     "city": "Bengaluru", "state": "KA", "postal_code": "560038",
+                     "country": "IN"}
+    }
+  },
+  "raw_payload": {
+    "employee_id": "emp_1002",
+    "legal_first_name": "Priya",
+    "legal_last_name": "Rao",
+    "preferred_name": null,
+    "personal_email": "priya.demo@example.com",
+    "start_date": "2026-09-01",
+    "address": {"line1": "77 Indiranagar 100ft Rd", "line2": "Apt 4B",
+                 "city": "Bengaluru", "state": "KA", "postal_code": "560038",
+                 "country": "IN"},
+    "position_title": "Implementation Engineer",
+    "department": "Customer Success",
+    "manager_id": "emp_0501"
+  },
+  "received_at": "2026-08-19T09:00:00Z"
+}

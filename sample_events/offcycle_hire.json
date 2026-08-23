@@ -1,0 +1,22 @@
+{
+  "event_id": "evt-0004",
+  "event_type": "OFFCYCLE_HIRE_DETECTED",
+  "employee_id": "emp_2001",
+  "source_system": "WORKDAY",
+  "changed_fields": {},
+  "raw_payload": {
+    "employee_id": "emp_2001",
+    "legal_first_name": "Sanjay",
+    "legal_last_name": "Iyer",
+    "preferred_name": null,
+    "personal_email": "sanjay.demo@example.com",
+    "start_date": "2026-09-08",
+    "address": {"line1": "12 Whitefield Main Rd", "line2": null,
+                 "city": "Bengaluru", "state": "KA", "postal_code": "560066",
+                 "country": "IN"},
+    "position_title": "Contractor - Data",
+    "department": "Analytics",
+    "manager_id": "emp_0502"
+  },
+  "received_at": "2026-08-21T08:00:00Z"
+}

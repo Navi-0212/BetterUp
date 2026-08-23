@@ -1,0 +1,42 @@
+{
+  "6e8b4ec1095c672ae63fdbc117b0999bcd4246a151c6a6a5243654722b5150b4": {
+    "employee_id": "emp_1001",
+    "target_system": "LUMOS",
+    "idempotency_key": "6e8b4ec1095c672ae63fdbc117b0999bcd4246a151c6a6a5243654722b5150b4",
+    "status": "ACKED",
+    "attempts": 1,
+    "last_attempt_at": "2026-08-23T08:23:29.890997Z",
+    "error_message": null,
+    "system_ref_id": "LUMOS-emp_1001-6e8b4ec1"
+  },
+  "31217f4449e5f85f7b420ea433cdd206f6d4b2399586e0f548321d7f82e8b9ec": {
+    "employee_id": "emp_1001",
+    "target_system": "OKTA",
+    "idempotency_key": "31217f4449e5f85f7b420ea433cdd206f6d4b2399586e0f548321d7f82e8b9ec",
+    "status": "ACKED",
+    "attempts": 1,
+    "last_attempt_at": "2026-08-23T08:23:29.890997Z",
+    "error_message": null,
+    "system_ref_id": "OKTA-emp_1001-31217f44"
+  },
+  "c1df658c6b28cce2a6b53952509554e9bdf521539a809cb80c244bc89e608d7a": {
+    "employee_id": "emp_1001",
+    "target_system": "TRACKER",
+    "idempotency_key": "c1df658c6b28cce2a6b53952509554e9bdf521539a809cb80c244bc89e608d7a",
+    "status": "ACKED",
+    "attempts": 1,
+    "last_attempt_at": "2026-08-23T08:23:29.909492Z",
+    "error_message": null,
+    "system_ref_id": "TRK-emp_1001-c1df658c"
+  },
+  "101ddfe4a10d731ad7f8b846d708cf779bc3f351f49b92431558f0a09416b2ac": {
+    "employee_id": "emp_1001",
+    "target_system": "WORKDAY",
+    "idempotency_key": "101ddfe4a10d731ad7f8b846d708cf779bc3f351f49b92431558f0a09416b2ac",
+    "status": "ACKED",
+    "attempts": 1,
+    "last_attempt_at": "2026-08-23T08:23:29.909492Z",
+    "error_message": null,
+    "system_ref_id": "WD-emp_1001-101ddfe4"
+  }
+}

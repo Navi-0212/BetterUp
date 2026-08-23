@@ -1,0 +1,25 @@
+{
+  "emp_1001": {
+    "employee_id": "emp_1001",
+    "legal_first_name": "Naveen",
+    "legal_last_name": "Kumaar",
+    "preferred_name": null,
+    "personal_email": "naveen.demo@example.com",
+    "work_email": null,
+    "start_date": "2026-09-15",
+    "address": {
+      "line1": "123 MG Road",
+      "line2": null,
+      "city": "Bengaluru",
+      "state": "KA",
+      "postal_code": "560001",
+      "country": "IN"
+    },
+    "position_title": "AI Automation Engineer",
+    "department": "People Technology",
+    "manager_id": "emp_0500",
+    "source_system": "ASHBY",
+    "last_updated_at": "2026-08-20T10:15:00Z",
+    "last_updated_by_event_id": "evt-0001"
+  }
+}

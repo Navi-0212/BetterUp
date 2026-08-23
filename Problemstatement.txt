@@ -1,0 +1,797 @@
+# BetterUp AI Automation Engineer — Take-Home Build Spec (v2)
+# Slice: Change Propagation (with validation nested inline, monitoring as stretch)
+#
+# v2 changes from v1: added exact function signatures for every component,
+# a deterministic near-duplicate algorithm, a literal Claude prompt, literal
+# JSON for all 5 sample events, a CLI spec, setup/run commands, an
+# injectable-clock retry mechanism, exact file paths, and required-headers
+# templates for the two markdown deliverables. If you already generated
+# code from v1, re-check it against Sections 8, 10, and 11 specifically —
+# those are where v1 was ambiguous enough to produce inconsistent output.
+
+
+## 0. HOW TO USE THIS FILE
+
+Build spec for an IDE AI agent (Cursor / Antigravity). Every section is a
+hard requirement unless marked "(stretch)" or "(optional)". Build in the
+phase order in Section 18. Do not add infrastructure, libraries, or
+services beyond Section 4 — if something seems to need a new tool, stop
+and flag it instead of adding it.
+
+Global code rules:
+- Python 3.11+, stdlib-first. Only add a dependency listed in Section 4.
+- All datetimes are timezone-aware UTC: `datetime.now(timezone.utc)`, never
+  `datetime.utcnow()` (deprecated). All JSON timestamps are ISO-8601 with
+  a `Z` suffix, e.g. `"2026-08-20T10:15:00Z"`.
+- Every downstream write goes through the idempotency + retry path in
+  Section 9 — no direct connector calls from anywhere else.
+- Every function that touches employee data takes/returns the `Employee`
+  model in Section 5. No ad-hoc dicts crossing module boundaries.
+- Use the EXACT function signatures given in Section 8. If you deviate,
+  note why in a code comment — the debrief will probe mismatches between
+  this spec and the code.
+- Prefer explicit, readable code over abstraction. This is a 2-hour
+  interview prototype, not a production system — no plugin architectures,
+  no generic "connector factory."
+
+
+## 1. BUSINESS CONTEXT
+
+BetterUp's onboarding coordination spans five systems with no single
+source of truth:
+
+- Ashby        — ATS. Source of truth BEFORE the hire (offer, name, start
+                 date, address).
+- Workday      — HRIS. System of record AFTER the hire. Can also receive
+                 off-cycle hires created directly, bypassing Ashby.
+- Okta         — Identity/SSO. Owns login + auth.
+- Lumos        — Sits on top of Okta. Governs app access, driven by HRIS
+                 lifecycle events (joiner/mover/leaver).
+- expoIT       — IT hardware vendor/reseller. Ships the laptop; needs a
+                 correct shipping address.
+- Cohort tracker — Internal checklist/status system humans read.
+
+Three failure modes result:
+
+1. CHANGE PROPAGATION — a name/start-date/address change after the offer,
+   or an off-cycle hire outside Ashby, never ripples downstream.
+2. BAD DATA CASCADES — wrong name/address in Ashby flows straight into
+   Workday, the Okta email, and the shipping label unchecked.
+3. NOBODY'S WATCHING THE GATES — hardware form, background check, Okta
+   provisioning have ~7-day deadlines nobody tracks.
+
+
+## 2. CHOSEN SLICE — AND WHY (defend this in the debrief)
+
+Building: CHANGE PROPAGATION, with validation nested inline (validated at
+the moment a field is transformed for a downstream write, not as a
+separate system), and a thin exception-monitoring read endpoint as a
+stretch goal over the same state store.
+
+- Only slice that forces a canonical data model, a diffing mechanism, and
+  per-system idempotent writes — the actual engineering depth being
+  graded.
+- Validation is nearly free once propagation exists: validate as you
+  transform, before you write.
+- Exception monitoring is a read-only view over state propagation already
+  maintains — cheap to bolt on last, not worth building first.
+- The only slice where an LLM has a legitimate job: resolving genuinely
+  ambiguous cases (Section 10), not gluing systems together.
+
+
+## 3. THE OFF-CYCLE / NO-SINGLE-SOURCE-OF-TRUTH PROBLEM
+
+Ashby is authoritative pre-hire, Workday post-hire. An off-cycle hire can
+appear in Workday with no Ashby record at all. Design decision (state
+explicitly in build_note.md): when no Ashby record exists for an
+employee_id, Workday is authoritative for that record, tagged
+`source_system=WORKDAY_OFFCYCLE`. Do not reconstruct a fictitious Ashby
+record.
+
+
+## 4. CONSTRAINTS
+
+- No real credentials/API calls to Ashby/Workday/Okta/Lumos/expoIT/
+  tracker — all five mocked (in-memory + local JSON-backed).
+- The ONE real external call is to the Anthropic API, for Section 10, and
+  ONLY in the integration test path (see Section 17) — never in the
+  default unit test run.
+- Env vars: `ANTHROPIC_API_KEY` (never hardcoded), `CLAUDE_MODEL`
+  (defaults to `claude-sonnet-5` if unset).
+- Dependencies allowed: `pydantic>=2.0,<3.0`, `anthropic>=0.40.0`,
+  `pytest>=8.0`, `python-dotenv>=1.0` (optional, just for loading `.env`
+  in `main.py` — not a workaround for stdlib-first, it's a 20-line
+  convenience). Do not add FastAPI/uvicorn — a CLI is sufficient.
+- Do NOT add: message queues (Kafka/SQS/RabbitMQ), a database server
+  (Postgres/Mongo), Docker, Terraform, or any new SaaS tool. State
+  persists to local JSON files (Section 8). State this restraint
+  explicitly in build_note.md: "did not add X because Y already covers it
+  at this scale, and n8n (already in the stack) could hold a
+  queuing/trigger layer if this needed to scale."
+
+
+## 5. CANONICAL DATA MODEL (pydantic v2)
+
+### Employee
+```
+employee_id: str
+legal_first_name: str
+legal_last_name: str
+preferred_name: str | None
+personal_email: str
+work_email: str | None            # assigned by Okta, absent pre-hire
+start_date: date
+address: Address
+position_title: str
+department: str
+manager_id: str | None
+source_system: Literal["ASHBY", "WORKDAY_OFFCYCLE"]
+last_updated_at: datetime          # tz-aware UTC
+last_updated_by_event_id: str
+```
+
+### Address
+```
+line1: str
+line2: str | None
+city: str
+state: str
+postal_code: str
+country: str
+```
+
+### ChangeEvent
+```
+event_id: str                     # uuid4
+event_type: Literal["FIELD_CHANGE", "OFFCYCLE_HIRE_DETECTED"]
+employee_id: str
+source_system: Literal["ASHBY", "WORKDAY"]
+changed_fields: dict[str, FieldDelta]   # {} for OFFCYCLE_HIRE_DETECTED —
+                                          # see Section 14, full record
+                                          # lives in raw_payload instead
+raw_payload: dict
+received_at: datetime             # tz-aware UTC
+```
+
+### LedgerEntry
+```
+employee_id: str
+target_system: Literal["WORKDAY", "OKTA", "LUMOS", "EXPOIT", "TRACKER"]
+idempotency_key: str
+status: Literal["PENDING", "SENT", "ACKED", "FAILED", "RETRYING"]
+attempts: int
+last_attempt_at: datetime | None
+error_message: str | None
+system_ref_id: str | None
+```
+
+### AuditLogEntry
+```
+event_id: str
+employee_id: str
+target_system: str | None
+action: str   # "FIELD_CHANGE_PROPAGATED" | "VALIDATION_REJECTED" |
+              # "NO_OP_SKIPPED" | "CLAUDE_CONFLICT_RESOLVED" |
+              # "NEEDS_HUMAN_REVIEW"
+before_state: dict | None
+after_state: dict | None
+triggered_by: str
+timestamp: datetime               # tz-aware UTC
+```
+
+### ConflictResolution (claude_handler.py output)
+```
+decision: Literal["same_person", "different_person", "needs_human_review"]
+confidence: float                 # 0.0-1.0
+reasoning: str
+```
+
+Rule: if an incoming field delta has `old_value == new_value`, drop it
+before validation and log `NO_OP_SKIPPED` — nothing changed, don't
+propagate or clutter the audit log with a real action entry.
+
+
+## 6. SYSTEM ARCHITECTURE
+
+```
+ChangeEvent (sample_events/*.json, simulating an Ashby webhook or
+             Workday off-cycle detection)
+        |
+        v
+  normalize_event()   -> candidate Employee (see Section 8 signature)
+        |
+        v
+  find_near_duplicate()  -> checks for an ambiguous match against the
+                             state store (Section 10's deterministic
+                             pre-filter, NOT every event goes through Claude)
+        |
+        v
+  IF near-duplicate found -> claude_handler.resolve_conflict()
+        -> log CLAUDE_CONFLICT_RESOLVED or NEEDS_HUMAN_REVIEW
+        -> low confidence / parse failure forces needs_human_review
+        |
+        v
+  validate_fields()   -> per-field validation; a bad field is dropped
+                          (VALIDATION_REJECTED), not the whole event
+        |
+        v
+  fan out valid changed fields to per-system transformers
+        (transform_for_workday / okta / lumos / expoit / tracker)
+        |
+        v
+  write_with_retry() per system, per field-group — isolated failures
+        |
+        v
+  audit_log.append()
+```
+
+
+## 7. REPO STRUCTURE
+
+```
+betterup-sync-engine/
+├── problem_statement.txt
+├── README.md
+├── requirements.txt
+├── .env.example
+├── pytest.ini                    # registers the "integration" marker
+├── systems_map.md                # Deliverable 1
+├── build_note.md                 # Deliverable 3
+├── src/
+│   ├── __init__.py
+│   ├── models.py
+│   ├── state_store.py
+│   ├── validators.py
+│   ├── sync_engine.py
+│   ├── claude_handler.py
+│   ├── mcp_server.py             # stretch
+│   ├── audit_log.py
+│   ├── main.py
+│   └── connectors/
+│       ├── __init__.py
+│       ├── base.py
+│       ├── fake_workday.py
+│       ├── fake_okta.py
+│       ├── fake_lumos.py
+│       ├── fake_expoit.py
+│       └── fake_tracker.py
+├── sample_events/
+│   ├── name_change.json
+│   ├── address_change.json
+│   ├── start_date_change.json
+│   ├── offcycle_hire.json
+│   └── ambiguous_name_conflict.json
+├── tests/
+│   ├── conftest.py               # fixtures: seeded store, fake clock,
+│   │                              #           fake Anthropic client
+│   ├── test_idempotency.py
+│   ├── test_partial_failure.py
+│   ├── test_offcycle_backfill.py
+│   ├── test_validation.py
+│   └── test_claude_conflict.py   # unit (mocked) + 1 integration test
+└── data/                          # gitignored, runtime state
+    ├── employees.json
+    ├── ledger.json
+    └── audit_log.jsonl            # append-only, one JSON object per line
+```
+
+
+## 8. COMPONENT CONTRACTS (exact signatures — build to these, not around them)
+
+### state_store.py
+```python
+class StateStore:
+    def __init__(self, data_dir: Path = Path("data")): ...
+
+    def get_employee(self, employee_id: str) -> Employee | None: ...
+    def save_employee(self, employee: Employee) -> None: ...
+    def all_employees(self) -> list[Employee]: ...
+
+    def get_ledger_entry(self, idempotency_key: str) -> LedgerEntry | None: ...
+    def save_ledger_entry(self, entry: LedgerEntry) -> None: ...
+    def needs_attention(self) -> list[LedgerEntry]:
+        """Entries with status FAILED — the monitoring stretch goal reads this."""
+```
+Backing files: `data/employees.json` (dict keyed by employee_id),
+`data/ledger.json` (dict keyed by idempotency_key), `data/audit_log.jsonl`
+(append-only, written by `audit_log.py`, not by `StateStore` directly).
+
+### validators.py
+```python
+def validate_fields(
+    employee: Employee, changed_field_names: set[str]
+) -> tuple[set[str], list[AuditLogEntry]]:
+    """Returns (valid_field_names, rejection_audit_entries). A rejected
+    field is removed from the fan-out set; the rest still propagate."""
+
+def is_near_duplicate(candidate: Employee, existing: Employee) -> bool:
+    """Deterministic pre-filter — see Section 10. Must NOT call Claude."""
+```
+
+### sync_engine.py
+```python
+def normalize_event(event: ChangeEvent, store: StateStore) -> Employee:
+    """FIELD_CHANGE: merge changed_fields onto the existing stored Employee.
+    OFFCYCLE_HIRE_DETECTED: build a new Employee entirely from raw_payload,
+    tagged source_system=WORKDAY_OFFCYCLE."""
+
+def process_event(
+    event: ChangeEvent,
+    store: StateStore,
+    connectors: dict[str, Connector],
+    claude_handler: "ClaudeHandler | None" = None,
+) -> ProcessResult:
+    """Top-level orchestration matching the Section 6 diagram. Returns a
+    ProcessResult summarizing: fields propagated, fields rejected, systems
+    written, systems failed, and any conflict resolution outcome."""
+
+def write_with_retry(
+    connector: Connector,
+    employee: Employee,
+    idempotency_key: str,
+    store: StateStore,
+    max_attempts: int = 3,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> LedgerEntry:
+    """See Section 9 for backoff formula. sleep_fn is injectable so tests
+    can pass a no-op and run instantly instead of waiting on real backoff."""
+```
+
+### claude_handler.py
+```python
+class ClaudeHandler:
+    def __init__(
+        self,
+        client: "anthropic.Anthropic | None" = None,
+        model: str | None = None,
+    ):
+        """If client is None, construct a real anthropic.Anthropic() using
+        ANTHROPIC_API_KEY. Tests inject a fake client — see Section 17.
+        model defaults to env var CLAUDE_MODEL, falling back to
+        'claude-sonnet-5'."""
+
+    def resolve_conflict(
+        self, record_a: Employee, record_b: Employee, context: str
+    ) -> ConflictResolution:
+        """See Section 10 for the exact prompt and confidence-gating rule."""
+```
+
+### main.py (CLI — see Section 16 for exact usage)
+```python
+def main(argv: list[str] | None = None) -> int:
+    """Parses --event, --data-dir, --dry-run. Loads and validates the
+    event JSON into a ChangeEvent, runs process_event, prints a summary,
+    returns a process exit code (0 = no failures, 1 = any FAILED or
+    needs_human_review entries)."""
+```
+
+
+## 9. IDEMPOTENCY & FAILURE HANDLING (must be enforced, will be tested)
+
+- `idempotency_key = sha256(f"{employee_id}:{field_name}:{new_value}:{target_system}")`
+- Before writing: if a `LedgerEntry` with this exact key already has
+  status `ACKED`, skip the write and log a no-op — replaying an event must
+  not double-ship a laptop or double-fire an Okta update.
+- Each connector write is wrapped individually (`try/except` per system,
+  per field-group). A failure in one system must not block another's
+  write from being attempted.
+- Retry formula: `delay = 0.1 * (2 ** attempt_number)` seconds, up to
+  `max_attempts=3`, called via the injectable `sleep_fn` from Section 8 —
+  tests pass `sleep_fn=lambda _: None` so the suite runs instantly. After
+  3 failures, status becomes `FAILED` and the entry surfaces via
+  `StateStore.needs_attention()`.
+- REQUIRED TEST (`test_idempotency.py`): process `name_change.json` twice.
+  Assert each mock connector's `write()` was called with a real attempt
+  exactly once (second run short-circuits on the ACKED ledger check).
+- REQUIRED TEST (`test_partial_failure.py`): `fake_expoit.py` raises
+  deterministically for `employee_id == "emp_offcycle_test"`. Assert
+  Workday/Okta still reach `ACKED` while expoIT reaches `FAILED` after 3
+  attempts, and appears in `needs_attention()`.
+
+
+## 10. VALIDATION RULES + NEAR-DUPLICATE ALGORITHM (deterministic — no LLM call here)
+
+Field validation (`validate_fields`), applied before fan-out:
+- `legal_first_name` / `legal_last_name`: non-empty after strip, no
+  digits.
+- `address`: all of line1/city/state/postal_code/country non-empty.
+- `start_date`: not before `event.received_at` (calendar date comparison).
+A rejected field is dropped (`VALIDATION_REJECTED` in the audit log with
+the reason); the rest of the event's valid fields still propagate.
+
+Near-duplicate pre-filter (`is_near_duplicate`) — stdlib only, no new
+dependency:
+```python
+from difflib import SequenceMatcher
+
+def is_near_duplicate(candidate: Employee, existing: Employee) -> bool:
+    if candidate.employee_id == existing.employee_id:
+        return False  # same record, not a conflict
+    if candidate.start_date != existing.start_date:
+        return False  # different start dates -> not the same hire
+    name_a = f"{candidate.legal_first_name} {candidate.legal_last_name}".lower().strip()
+    name_b = f"{existing.legal_first_name} {existing.legal_last_name}".lower().strip()
+    if name_a == name_b:
+        return False  # exact match is a normal update, not an ambiguous conflict
+    ratio = SequenceMatcher(None, name_a, name_b).ratio()
+    return ratio >= 0.75
+```
+This pre-filter runs against every existing employee in the store BEFORE
+any Claude call — Claude is only invoked when this returns `True` for at
+least one existing record. This is what keeps the LLM call rare and
+justified rather than a call-per-event router.
+
+
+## 11. CLAUDE INTEGRATION (claude_handler.py)
+
+Triggered only when `is_near_duplicate()` finds a candidate match
+(Section 10) — never on ordinary field changes.
+
+Exact prompt (system + user), sent via the Messages API:
+
+**System:**
+```
+You are resolving a data conflict for an HR onboarding sync system. You
+will be given two employee records that a deterministic name-similarity
+check flagged as a possible match. Decide whether they are the same
+person, different people, or too ambiguous to auto-decide. Respond with
+ONLY a JSON object, no other text, matching exactly this shape:
+{"decision": "same_person" | "different_person" | "needs_human_review",
+ "confidence": <float 0.0-1.0>, "reasoning": "<one sentence>"}
+```
+
+**User:**
+```
+Record A (existing, from {record_a.source_system}):
+{record_a as JSON}
+
+Record B (incoming, from {record_b.source_system}):
+{record_b as JSON}
+
+Context: {context}
+```
+
+- Parse the response into `ConflictResolution`. If parsing fails OR
+  `confidence < 0.7`, override the decision to `needs_human_review`
+  regardless of what Claude returned — never let a low-confidence or
+  malformed response silently auto-merge two people.
+- `needs_human_review` outcomes: log `NEEDS_HUMAN_REVIEW` to the audit
+  log, do not merge, do not propagate that field, and add to
+  `needs_attention()`'s output (extend the ledger view or track alongside
+  it — either is fine as long as `main.py`'s summary surfaces it).
+- `ambiguous_name_conflict.json` (Section 14) is the fixture for this
+  path — requires the state store to be pre-seeded with a matching
+  existing record first (see Section 17).
+
+
+## 12. MCP TOOL (stretch — build only after Sections 5-11 work and pass tests)
+
+- Use the official `mcp` Python SDK, stdio transport.
+- Entrypoint: `python -m src.mcp_server`.
+- Tool name: `resolve_identity_conflict`.
+- Input schema: `{record_a: object, record_b: object, context: string}`.
+- Output schema: `{decision: string, confidence: number, reasoning: string}`.
+- The tool function should be a thin wrapper that constructs `Employee`
+  objects from the input dicts and delegates to the same
+  `ClaudeHandler.resolve_conflict()` used by `sync_engine.py` — do not
+  duplicate the prompt or gating logic.
+- Note if using MCP SDK v2: register this as a plain sync tool function —
+  the SDK runs sync tools on a worker thread automatically, no async
+  wrapper needed.
+- Mention explicitly in build_note.md why this is an MCP tool rather than
+  a plain function: it lets the exact resolution logic be invoked live
+  from Claude Code/Desktop during the debrief.
+
+
+## 13. AUTH APPROACH (document only — do not implement)
+
+One paragraph in build_note.md: OAuth2 client-credentials flow per
+downstream system, credentials from env vars/a secrets manager (never
+committed), access tokens cached in memory with expiry, refreshed
+transparently by each connector's `_get_token()` before a write.
+
+
+## 14. SAMPLE EVENTS — literal JSON (create exactly these five files)
+
+### sample_events/name_change.json
+```json
+{
+  "event_id": "evt-0001",
+  "event_type": "FIELD_CHANGE",
+  "employee_id": "emp_1001",
+  "source_system": "ASHBY",
+  "changed_fields": {
+    "legal_last_name": {"old_value": "Kumar", "new_value": "Kumaar"}
+  },
+  "raw_payload": {
+    "employee_id": "emp_1001",
+    "legal_first_name": "Naveen",
+    "legal_last_name": "Kumaar",
+    "preferred_name": null,
+    "personal_email": "naveen.demo@example.com",
+    "start_date": "2026-09-15",
+    "address": {"line1": "123 MG Road", "line2": null, "city": "Bengaluru",
+                 "state": "KA", "postal_code": "560001", "country": "IN"},
+    "position_title": "AI Automation Engineer",
+    "department": "People Technology",
+    "manager_id": "emp_0500"
+  },
+  "received_at": "2026-08-20T10:15:00Z"
+}
+```
+
+### sample_events/address_change.json
+```json
+{
+  "event_id": "evt-0002",
+  "event_type": "FIELD_CHANGE",
+  "employee_id": "emp_1002",
+  "source_system": "ASHBY",
+  "changed_fields": {
+    "address": {
+      "old_value": {"line1": "45 Residency Rd", "line2": null, "city": "Bengaluru",
+                     "state": "KA", "postal_code": "560025", "country": "IN"},
+      "new_value": {"line1": "77 Indiranagar 100ft Rd", "line2": "Apt 4B",
+                     "city": "Bengaluru", "state": "KA", "postal_code": "560038",
+                     "country": "IN"}
+    }
+  },
+  "raw_payload": {
+    "employee_id": "emp_1002",
+    "legal_first_name": "Priya",
+    "legal_last_name": "Rao",
+    "preferred_name": null,
+    "personal_email": "priya.demo@example.com",
+    "start_date": "2026-09-01",
+    "address": {"line1": "77 Indiranagar 100ft Rd", "line2": "Apt 4B",
+                 "city": "Bengaluru", "state": "KA", "postal_code": "560038",
+                 "country": "IN"},
+    "position_title": "Implementation Engineer",
+    "department": "Customer Success",
+    "manager_id": "emp_0501"
+  },
+  "received_at": "2026-08-19T09:00:00Z"
+}
+```
+
+### sample_events/start_date_change.json
+```json
+{
+  "event_id": "evt-0003",
+  "event_type": "FIELD_CHANGE",
+  "employee_id": "emp_1003",
+  "source_system": "ASHBY",
+  "changed_fields": {
+    "start_date": {"old_value": "2026-09-01", "new_value": "2026-09-15"}
+  },
+  "raw_payload": {
+    "employee_id": "emp_1003",
+    "legal_first_name": "Arjun",
+    "legal_last_name": "Mehta",
+    "preferred_name": null,
+    "personal_email": "arjun.demo@example.com",
+    "start_date": "2026-09-15",
+    "address": {"line1": "9 Koramangala 5th Block", "line2": null,
+                 "city": "Bengaluru", "state": "KA", "postal_code": "560095",
+                 "country": "IN"},
+    "position_title": "AI Enablement Lead",
+    "department": "People Technology",
+    "manager_id": "emp_0500"
+  },
+  "received_at": "2026-08-18T14:30:00Z"
+}
+```
+
+### sample_events/offcycle_hire.json
+```json
+{
+  "event_id": "evt-0004",
+  "event_type": "OFFCYCLE_HIRE_DETECTED",
+  "employee_id": "emp_2001",
+  "source_system": "WORKDAY",
+  "changed_fields": {},
+  "raw_payload": {
+    "employee_id": "emp_2001",
+    "legal_first_name": "Sanjay",
+    "legal_last_name": "Iyer",
+    "preferred_name": null,
+    "personal_email": "sanjay.demo@example.com",
+    "start_date": "2026-09-08",
+    "address": {"line1": "12 Whitefield Main Rd", "line2": null,
+                 "city": "Bengaluru", "state": "KA", "postal_code": "560066",
+                 "country": "IN"},
+    "position_title": "Contractor - Data",
+    "department": "Analytics",
+    "manager_id": "emp_0502"
+  },
+  "received_at": "2026-08-21T08:00:00Z"
+}
+```
+
+### sample_events/ambiguous_name_conflict.json
+```json
+{
+  "event_id": "evt-0005",
+  "event_type": "OFFCYCLE_HIRE_DETECTED",
+  "employee_id": "emp_2002",
+  "source_system": "WORKDAY",
+  "changed_fields": {},
+  "raw_payload": {
+    "employee_id": "emp_2002",
+    "legal_first_name": "Sanjai",
+    "legal_last_name": "Iyer",
+    "preferred_name": null,
+    "personal_email": "sanjai.demo@example.com",
+    "start_date": "2026-09-08",
+    "address": {"line1": "12 Whitefield Main Rd", "line2": null,
+                 "city": "Bengaluru", "state": "KA", "postal_code": "560066",
+                 "country": "IN"},
+    "position_title": "Contractor - Data",
+    "department": "Analytics",
+    "manager_id": "emp_0502"
+  },
+  "received_at": "2026-08-22T08:00:00Z"
+}
+```
+NOTE: this fixture only produces a conflict if `emp_2001` from
+`offcycle_hire.json` is already saved in the state store when this event
+is processed — same start_date, near-identical name ("Sanjay" vs
+"Sanjai"), different employee_id. `test_claude_conflict.py` must seed the
+store with `emp_2001` first (see `conftest.py` in Section 17).
+
+
+## 15. MOCK CONNECTOR BEHAVIOR
+
+Each `fake_*.py` implements `Connector` (Section 8, `base.py` in the
+existing scaffold):
+```python
+def write(self, employee: Employee, idempotency_key: str) -> ConnectorResult:
+```
+- Default: succeed, return a fake `system_ref_id` (e.g. `"WD-00123"`).
+- `fake_expoit.py`: raise a simulated transient error when
+  `employee.employee_id == "emp_offcycle_test"`. All other inputs succeed.
+- Keep each connector under ~30 lines.
+
+
+## 16. SETUP & RUN
+
+### requirements.txt
+```
+pydantic>=2.0,<3.0
+anthropic>=0.40.0
+pytest>=8.0
+python-dotenv>=1.0
+```
+
+### .env.example
+```
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+CLAUDE_MODEL=claude-sonnet-5
+```
+
+### pytest.ini
+```ini
+[pytest]
+markers =
+    integration: makes a real Anthropic API call, requires ANTHROPIC_API_KEY
+```
+
+### Commands
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env            # fill in your real ANTHROPIC_API_KEY
+
+pytest                          # unit tests only — no network, no API key needed
+pytest -m integration           # requires ANTHROPIC_API_KEY, real Claude call
+
+python -m src.main --event sample_events/name_change.json
+python -m src.main --event sample_events/name_change.json --dry-run
+```
+
+CLI usage:
+```
+python -m src.main --event <path> [--data-dir data/] [--dry-run]
+  --event      required. Path to a ChangeEvent JSON file.
+  --data-dir   optional. Defaults to ./data.
+  --dry-run    optional. Runs normalize/validate/diff, prints what WOULD
+               be written, makes no connector writes and no state changes.
+Exit code 0 if no FAILED or needs_human_review entries resulted, else 1.
+```
+
+
+## 17. TESTING STRATEGY (resolves v1's real-call-vs-CI contradiction)
+
+- Default `pytest` run must NOT require `ANTHROPIC_API_KEY` and must NOT
+  hit the network. `test_claude_conflict.py`'s primary test injects a fake
+  `anthropic.Anthropic`-shaped client into `ClaudeHandler(client=...)`
+  (per Section 8) that returns a canned `same_person`/`needs_human_review`
+  response — this proves the confidence-gating and parsing logic without
+  spending money or depending on network access.
+- Exactly one test is marked `@pytest.mark.integration` and additionally
+  wrapped in `@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), ...)`
+  — this is the one real call, run manually before the debrief with
+  `pytest -m integration`, proving the actual integration works end to
+  end against `ambiguous_name_conflict.json`.
+- `tests/conftest.py` provides:
+  - a `seeded_store` fixture: a `StateStore` pointed at a temp dir,
+    pre-populated with `emp_2001` (from `offcycle_hire.json`'s
+    raw_payload) — required by `ambiguous_name_conflict.json`'s test.
+  - a `no_sleep` fixture: `lambda _: None`, passed as `sleep_fn` to
+    `write_with_retry` so the retry tests run instantly.
+  - a `fake_anthropic_client` fixture returning a stub with a
+    `.messages.create()` method returning a canned response object.
+
+
+## 18. BUILD PLAN (phase order — do not skip ahead)
+
+1. `models.py` + `state_store.py`.
+2. `connectors/` (all five fakes) + `base.py`.
+3. `validators.py` (including `is_near_duplicate`, Section 10).
+4. `sync_engine.py` (`normalize_event`, `process_event`, `write_with_retry`).
+5. `sample_events/*.json` (Section 14, literal) + `test_idempotency.py` +
+   `test_partial_failure.py` — prove Section 9 before adding the LLM layer.
+6. `test_offcycle_backfill.py` — prove Section 3's design decision.
+7. `claude_handler.py` + `conftest.py` fixtures + `test_claude_conflict.py`
+   (unit test with fake client first, integration test second).
+8. `audit_log.py` wired through everything already built.
+9. `main.py` CLI (Section 16).
+10. `mcp_server.py` (stretch, only if time remains).
+11. `systems_map.md` and `build_note.md` (Section 19 templates).
+
+
+## 19. DELIVERABLES — required templates
+
+### systems_map.md (required headers)
+```markdown
+# Systems Map
+## Where data lives and moves
+[table from Section 1]
+## Where it breaks today
+[the three failure modes, Section 1]
+## Slice chosen and why
+[Section 2's justification, in your own words for the debrief]
+```
+
+### build_note.md (required headers)
+```markdown
+# Build Note
+## Why this slice
+## Key design decisions
+### Data model
+### Failure handling & idempotency
+### The off-cycle / no-single-source-of-truth decision (Section 3)
+## What I'd productionize
+- Real webhooks from Ashby instead of sample event files
+- A real database instead of local JSON
+- Real OAuth per the documented approach (Section 13)
+- Slack alerting off needs_attention() for the monitoring stretch
+## What I chose not to add, and why
+[Section 4's restraint note — no queue, no DB server, etc.]
+## AI tools used
+## One thing the AI got wrong, and how I caught it
+[capture this live during the build — do not invent it]
+```
+
+
+## 20. ACCEPTANCE CRITERIA
+
+- [ ] Running `name_change.json` twice produces exactly one real write
+      per downstream system, proven by `test_idempotency.py`.
+- [ ] A forced expoIT failure does not block Workday/Okta writes, proven
+      by `test_partial_failure.py`.
+- [ ] `offcycle_hire.json` is handled without inventing a fake Ashby
+      record, proven by `test_offcycle_backfill.py`.
+- [ ] `is_near_duplicate()` correctly flags `emp_2002` against a
+      pre-seeded `emp_2001`, and does NOT flag unrelated records.
+- [ ] `test_claude_conflict.py`'s unit test passes with no network access
+      and no `ANTHROPIC_API_KEY`; the integration test passes when run
+      manually with a real key.
+- [ ] Low confidence or a malformed Claude response is force-overridden
+      to `needs_human_review`, proven by a test with the fake client.
+- [ ] A bad field is dropped without dropping the rest of the event.
+- [ ] `python -m src.main --event ... --dry-run` makes no writes.
+- [ ] `systems_map.md` and `build_note.md` follow the templates in
+      Section 19 and are complete.
+- [ ] No new third-party infrastructure was added beyond Section 4.

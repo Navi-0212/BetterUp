@@ -1,0 +1,24 @@
+{
+  "event_id": "evt-0003",
+  "event_type": "FIELD_CHANGE",
+  "employee_id": "emp_1003",
+  "source_system": "ASHBY",
+  "changed_fields": {
+    "start_date": {"old_value": "2026-09-01", "new_value": "2026-09-15"}
+  },
+  "raw_payload": {
+    "employee_id": "emp_1003",
+    "legal_first_name": "Arjun",
+    "legal_last_name": "Mehta",
+    "preferred_name": null,
+    "personal_email": "arjun.demo@example.com",
+    "start_date": "2026-09-15",
+    "address": {"line1": "9 Koramangala 5th Block", "line2": null,
+                 "city": "Bengaluru", "state": "KA", "postal_code": "560095",
+                 "country": "IN"},
+    "position_title": "AI Enablement Lead",
+    "department": "People Technology",
+    "manager_id": "emp_0500"
+  },
+  "received_at": "2026-08-18T14:30:00Z"
+}

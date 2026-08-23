@@ -1,0 +1,23 @@
+{
+  "event_id": "evt-0001",
+  "event_type": "FIELD_CHANGE",
+  "employee_id": "emp_1001",
+  "source_system": "ASHBY",
+  "changed_fields": {
+    "legal_last_name": {"old_value": "Kumar", "new_value": "Kumaar"}
+  },
+  "raw_payload": {
+    "employee_id": "emp_1001",
+    "legal_first_name": "Naveen",
+    "legal_last_name": "Kumaar",
+    "preferred_name": null,
+    "personal_email": "naveen.demo@example.com",
+    "start_date": "2026-09-15",
+    "address": {"line1": "123 MG Road", "line2": null, "city": "Bengaluru",
+                 "state": "KA", "postal_code": "560001", "country": "IN"},
+    "position_title": "AI Automation Engineer",
+    "department": "People Technology",
+    "manager_id": "emp_0500"
+  },
+  "received_at": "2026-08-20T10:15:00Z"
+}

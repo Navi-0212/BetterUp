@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BetterUp Sync Engine — Change Propagation Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Ambient background glow effects -->
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h2>BetterUp</h2>
+          <span>Sync Engine v2.0</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="tab-simulator">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <span>Event Simulator</span>
+        </button>
+        <button class="nav-item" data-tab="tab-employees">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span>Employees Store</span>
+          <span class="badge" id="badge-employees">0</span>
+        </button>
+        <button class="nav-item" data-tab="tab-ledger">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M7 15h0M2 9.5h20"></path></svg>
+          <span>Ledger & Triage</span>
+          <span class="badge badge-alert" id="badge-attention" style="display:none">0</span>
+        </button>
+        <button class="nav-item" data-tab="tab-audit">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          <span>Audit Stream</span>
+          <span class="badge" id="badge-audit">0</span>
+        </button>
+        <button class="nav-item" data-tab="tab-ai-lab">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V17a1 1 0 0 1-2 0v-.07A7.003 7.003 0 0 1 5.07 11H5a1 1 0 0 1 0-2h.07A7.003 7.003 0 0 1 11 5.07V5a1 1 0 0 1 2 0v.07A7.003 7.003 0 0 1 18.93 11H19a1 1 0 0 1 0 2h-.07A7.003 7.003 0 0 1 13 16.93z"></path></svg>
+          <span>Gemini AI Lab</span>
+        </button>
+        <button class="nav-item" data-tab="tab-systems">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+          <span>Systems Health</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="ai-status-card">
+          <div class="ai-header">
+            <span class="status-dot online"></span>
+            <span class="ai-title">Gemini 2.5 Flash</span>
+          </div>
+          <span class="ai-sub" id="llm-status-text">Confidence Gating Active</span>
+        </div>
+        <div class="quick-actions">
+          <button id="btn-seed" class="btn-action" title="Seed standard test employee data">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Seed Demo
+          </button>
+          <button id="btn-reset" class="btn-action btn-danger" title="Clear all state store and audit log data">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            Clear Data
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar Metrics -->
+      <header class="top-bar">
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-label">Synchronized Employees</span>
+            <div class="stat-val" id="stat-employees">0</div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Ledger Writes</span>
+            <div class="stat-val" id="stat-ledger">0</div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Audit Log Entries</span>
+            <div class="stat-val" id="stat-audit">0</div>
+          </div>
+          <div class="stat-card" id="card-attention">
+            <span class="stat-label">Needs Attention</span>
+            <div class="stat-val text-success" id="stat-attention">0</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- TAB 1: Event Simulator -->
+      <section class="tab-content active" id="tab-simulator">
+        <div class="page-header">
+          <div>
+            <h1>Event Ingestion & Change Propagation Simulator</h1>
+            <p class="subtitle">Select a sample event or author a custom webhook payload to execute the sync pipeline.</p>
+          </div>
+        </div>
+
+        <div class="simulator-grid">
+          <!-- Left: Event Ingestion Form & Editor -->
+          <div class="card glass-card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="step-num">1</span>
+                <h3>Incoming Webhook Payload</h3>
+              </div>
+              <div class="selector-wrap">
+                <label for="sample-select">Sample Fixture:</label>
+                <select id="sample-select" class="custom-select">
+                  <option value="">-- Choose Sample Event --</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="editor-container">
+              <textarea id="event-editor" class="code-editor" spellcheck="false"></textarea>
+            </div>
+
+            <div class="action-bar">
+              <div class="toggle-wrap">
+                <label class="switch">
+                  <input type="checkbox" id="toggle-dry-run">
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label" id="dry-run-label">Dry Run Simulation</span>
+              </div>
+              <button id="btn-process" class="btn btn-primary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span>Dispatch Event</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Interactive Flow & Execution Summary -->
+          <div class="card glass-card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="step-num">2</span>
+                <h3>Propagation Pipeline Flow</h3>
+              </div>
+              <span class="badge badge-neutral" id="execution-status-badge">Idle</span>
+            </div>
+
+            <!-- Flow Visualizer -->
+            <div class="pipeline-visualizer">
+              <div class="pipeline-node" id="node-normalize">
+                <div class="node-icon">📥</div>
+                <div class="node-label">Normalize</div>
+              </div>
+              <div class="pipeline-connector"></div>
+              <div class="pipeline-node" id="node-prefilter">
+                <div class="node-icon">🧠</div>
+                <div class="node-label">AI Dedupe</div>
+              </div>
+              <div class="pipeline-connector"></div>
+              <div class="pipeline-node" id="node-validate">
+                <div class="node-icon">🛡️</div>
+                <div class="node-label">Validate</div>
+              </div>
+              <div class="pipeline-connector"></div>
+              <div class="pipeline-node" id="node-fanout">
+                <div class="node-icon">⚡</div>
+                <div class="node-label">Fan-out</div>
+              </div>
+            </div>
+
+            <!-- Execution Results Output -->
+            <div class="execution-result-card" id="result-box">
+              <div class="result-placeholder">
+                <p>Dispatch an event to inspect real-time validation, field delta propagation, and downstream ACK states.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: Employees Store -->
+      <section class="tab-content" id="tab-employees">
+        <div class="page-header">
+          <div>
+            <h1>Canonical Employees Store</h1>
+            <p class="subtitle">Unified canonical Employee records maintained in atomic local storage.</p>
+          </div>
+          <div class="search-wrap">
+            <input type="text" id="employee-search" placeholder="Search by name, ID, or title..." class="search-input">
+          </div>
+        </div>
+
+        <div class="card glass-card">
+          <div class="table-responsive">
+            <table class="data-table" id="employees-table">
+              <thead>
+                <tr>
+                  <th>Employee ID</th>
+                  <th>Legal Name</th>
+                  <th>Position & Department</th>
+                  <th>Start Date</th>
+                  <th>Work Email</th>
+                  <th>Source Provenance</th>
+                  <th>Last Event</th>
+                </tr>
+              </thead>
+              <tbody id="employees-tbody">
+                <tr><td colspan="7" class="text-center">No employee records in store. Click "Seed Demo" to load records.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: Idempotency Ledger -->
+      <section class="tab-content" id="tab-ledger">
+        <div class="page-header">
+          <div>
+            <h1>Idempotency Ledger & Exception Triage</h1>
+            <p class="subtitle">Per-write SHA-256 idempotency entries, retry backoff tracking, and exception states.</p>
+          </div>
+        </div>
+
+        <div id="attention-alert-box" class="alert-banner" style="display:none">
+          <div class="alert-icon">⚠️</div>
+          <div class="alert-content">
+            <h4 id="attention-alert-title">0 Downstream Systems Need Attention</h4>
+            <p id="attention-alert-desc">These connector writes exceeded maximum retry attempts (3) and require manual triage.</p>
+          </div>
+        </div>
+
+        <div class="card glass-card">
+          <div class="table-responsive">
+            <table class="data-table" id="ledger-table">
+              <thead>
+                <tr>
+                  <th>Target System</th>
+                  <th>Idempotency Key (SHA-256)</th>
+                  <th>Status</th>
+                  <th>Attempts</th>
+                  <th>System Ref ID</th>
+                  <th>Updated At</th>
+                  <th>Error Details</th>
+                </tr>
+              </thead>
+              <tbody id="ledger-tbody">
+                <tr><td colspan="7" class="text-center">Ledger is empty. No downstream writes have been dispatched.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: Audit Log Stream -->
+      <section class="tab-content" id="tab-audit">
+        <div class="page-header">
+          <div>
+            <h1>Append-Only Audit Stream</h1>
+            <p class="subtitle">Real-time immutable log of all propagated deltas, rejections, no-ops, and AI resolutions.</p>
+          </div>
+          <div class="filter-actions">
+            <select id="audit-filter-action" class="custom-select">
+              <option value="">All Actions</option>
+              <option value="FIELD_CHANGE_PROPAGATED">FIELD_CHANGE_PROPAGATED</option>
+              <option value="VALIDATION_REJECTED">VALIDATION_REJECTED</option>
+              <option value="NO_OP_SKIPPED">NO_OP_SKIPPED</option>
+              <option value="CLAUDE_CONFLICT_RESOLVED">CLAUDE_CONFLICT_RESOLVED</option>
+              <option value="NEEDS_HUMAN_REVIEW">NEEDS_HUMAN_REVIEW</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card glass-card">
+          <div class="audit-feed" id="audit-feed-list">
+            <div class="text-center p-4">No audit entries recorded yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: Gemini AI Conflict Lab -->
+      <section class="tab-content" id="tab-ai-lab">
+        <div class="page-header">
+          <div>
+            <h1>Google Gemini Identity Conflict AI Lab</h1>
+            <p class="subtitle">Interactive sandbox testing LLM identity deduplication with strict 70% confidence gating.</p>
+          </div>
+          <button id="btn-run-ai-lab" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>Resolve Conflict with Gemini</span>
+          </button>
+        </div>
+
+        <div class="ai-lab-grid">
+          <!-- Record A -->
+          <div class="card glass-card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="badge badge-ashby">Record A (Existing)</span>
+              </div>
+            </div>
+            <textarea id="ai-rec-a" class="code-editor small-editor" spellcheck="false"></textarea>
+          </div>
+
+          <!-- Record B -->
+          <div class="card glass-card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="badge badge-workday">Record B (Incoming)</span>
+              </div>
+            </div>
+            <textarea id="ai-rec-b" class="code-editor small-editor" spellcheck="false"></textarea>
+          </div>
+        </div>
+
+        <!-- AI Output Box -->
+        <div class="card glass-card mt-4" id="ai-lab-result-box" style="display:none">
+          <div class="card-header">
+            <h3>Gemini Resolution & Confidence Gating Output</h3>
+            <span class="badge" id="ai-lab-decision-badge">Decision</span>
+          </div>
+          <div class="ai-result-content">
+            <div class="confidence-gauge-wrap">
+              <div class="gauge-label">Confidence Score</div>
+              <div class="gauge-val" id="ai-lab-confidence">0%</div>
+              <div class="progress-bar">
+                <div class="progress-fill" id="ai-lab-progress-fill" style="width: 0%"></div>
+              </div>
+              <span class="threshold-note">Threshold: $\ge 70\%$ for automatic resolution</span>
+            </div>
+            <div class="reasoning-box">
+              <h4>Model Reasoning:</h4>
+              <p id="ai-lab-reasoning">Reasoning will appear here...</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 6: Systems Health -->
+      <section class="tab-content" id="tab-systems">
+        <div class="page-header">
+          <div>
+            <h1>Downstream Systems & Connectors Health</h1>
+            <p class="subtitle">Status, routing mappings, and failure isolation boundaries across all 5 integrated platforms.</p>
+          </div>
+        </div>
+
+        <div class="systems-grid" id="systems-grid">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
