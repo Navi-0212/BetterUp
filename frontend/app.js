@@ -1,4 +1,4 @@
-// BetterUp Sync Engine Frontend Application
+// BetterUp Sync Engine Frontend Application — Obsidian Ember Refined
 
 function getApiBase() {
   const custom = localStorage.getItem("betterup_api_base");
@@ -42,15 +42,18 @@ const employeeSearch = document.getElementById("employee-search");
 const attentionAlertBox = document.getElementById("attention-alert-box");
 const attentionAlertTitle = document.getElementById("attention-alert-title");
 
-// AI Lab Elements
+// AI Conflict Lab Elements
 const aiRecA = document.getElementById("ai-rec-a");
 const aiRecB = document.getElementById("ai-rec-b");
 const btnRunAiLab = document.getElementById("btn-run-ai-lab");
-const aiLabResultBox = document.getElementById("ai-lab-result-box");
+const btnLoadAmbiguous = document.getElementById("btn-load-ambiguous-demo");
 const aiLabDecisionBadge = document.getElementById("ai-lab-decision-badge");
 const aiLabConfidence = document.getElementById("ai-lab-confidence");
-const aiLabProgressFill = document.getElementById("ai-lab-progress-fill");
+const aiGaugeCircle = document.getElementById("ai-gauge-circle");
 const aiLabReasoning = document.getElementById("ai-lab-reasoning");
+const aiDecisionBox = document.getElementById("ai-decision-box");
+const aiDecisionIcon = document.getElementById("ai-decision-icon");
+const aiModelBadge = document.getElementById("ai-model-badge");
 
 // Pipeline Visualizer Nodes
 const nodeNormalize = document.getElementById("node-normalize");
@@ -66,7 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initAiLabDefaults();
 });
 
-// Tabs Switching
+// Tabs Navigation
 function initTabs() {
   const navItems = document.querySelectorAll(".nav-item");
   const tabContents = document.querySelectorAll(".tab-content");
@@ -81,7 +84,7 @@ function initTabs() {
       const target = document.getElementById(tabId);
       if (target) target.classList.add("active");
 
-      // Reload tab-specific data
+      // Tab specific reloads
       if (tabId === "tab-employees") loadEmployees();
       if (tabId === "tab-ledger") loadLedger();
       if (tabId === "tab-audit") loadAuditLogs();
@@ -158,9 +161,27 @@ function initEventListeners() {
   });
 
   btnRunAiLab.addEventListener("click", handleRunAiLab);
+
+  if (btnLoadAmbiguous) {
+    btnLoadAmbiguous.addEventListener("click", initAiLabDefaults);
+  }
+
+  const btnKeepA = document.getElementById("btn-keep-a");
+  if (btnKeepA) {
+    btnKeepA.addEventListener("click", () => {
+      alert("Record A preserved in canonical store.");
+    });
+  }
+
+  const btnKeepB = document.getElementById("btn-keep-b");
+  if (btnKeepB) {
+    btnKeepB.addEventListener("click", () => {
+      alert("Record B selected. Updating canonical employee profile.");
+    });
+  }
 }
 
-// Load Global Data
+// Global Loaders
 async function loadAllData() {
   loadOverview();
   loadSampleEvents();
@@ -186,19 +207,14 @@ async function loadOverview() {
     if (data.needs_attention_count > 0) {
       badgeAttention.textContent = data.needs_attention_count;
       badgeAttention.style.display = "inline-flex";
-      statAttention.classList.remove("text-success");
-      statAttention.classList.add("text-danger");
+      statAttention.style.color = "var(--error)";
     } else {
       badgeAttention.style.display = "none";
-      statAttention.classList.add("text-success");
-      statAttention.classList.remove("text-danger");
+      statAttention.style.color = "var(--tertiary)";
     }
 
-    const llmStatus = document.getElementById("llm-status-text");
-    if (data.has_api_key) {
-      llmStatus.textContent = `Active (${data.llm_model})`;
-    } else {
-      llmStatus.textContent = "Mock / Test Mode";
+    if (data.llm_model && aiModelBadge) {
+      aiModelBadge.textContent = data.llm_model;
     }
   } catch (e) {
     console.error("Overview error:", e);
@@ -233,21 +249,21 @@ async function handleProcessEvent() {
   try {
     payload = JSON.parse(eventEditor.value);
   } catch (e) {
-    alert("Invalid JSON in editor: " + e.message);
+    alert("Invalid JSON payload: " + e.message);
     return;
   }
 
   isProcessing = true;
   btnProcess.disabled = true;
   execStatusBadge.className = "badge badge-neutral";
-  execStatusBadge.textContent = "Executing...";
+  execStatusBadge.textContent = "Executing Pipeline...";
 
   // Animate Pipeline visualizer
   resetPipelineVisualizer();
-  await animateNode(nodeNormalize, 200);
-  await animateNode(nodePrefilter, 250);
-  await animateNode(nodeValidate, 200);
-  await animateNode(nodeFanout, 250);
+  await animateNode(nodeNormalize, 150);
+  await animateNode(nodePrefilter, 200);
+  await animateNode(nodeValidate, 150);
+  await animateNode(nodeFanout, 200);
 
   const dryRun = toggleDryRun.checked;
 
@@ -267,9 +283,9 @@ async function handleProcessEvent() {
     loadOverview();
   } catch (e) {
     resultBox.innerHTML = `
-      <div class="result-section">
+      <div style="color:var(--error); font-family:var(--font-mono); font-size:0.85rem;">
         <span class="badge badge-danger">Processing Error</span>
-        <p class="mt-4" style="color:var(--accent-rose); font-family:var(--font-mono);">${e.message}</p>
+        <p style="margin-top:8px;">${e.message}</p>
       </div>
     `;
     execStatusBadge.className = "badge badge-danger";
@@ -306,39 +322,44 @@ function renderExecutionResult(result, dryRun, employee) {
   }
 
   let html = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <h4>Execution Output (${dryRun ? "DRY RUN SIMULATION" : "LIVE STATE UPDATE"})</h4>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h4 style="font-family:var(--font-headline); font-size:0.95rem; color:var(--text-primary);">
+        Output: ${dryRun ? "DRY RUN SIMULATION" : "LIVE STATE UPDATE"}
+      </h4>
       ${statusBadge}
     </div>
     
-    <div class="result-section">
-      <div class="result-title">Event Information</div>
-      <div style="font-size:0.85rem; color:var(--text-secondary);">
-        Event ID: <strong style="color:#FFF;">${result.event_id}</strong> | Employee ID: <strong style="color:#FFF;">${result.employee_id}</strong>
-      </div>
+    <div style="font-size:0.8rem; color:var(--text-variant); margin-bottom:12px; font-family:var(--font-mono);">
+      Event ID: <strong style="color:#FFF;">${result.event_id}</strong> | Employee: <strong style="color:#FFF;">${result.employee_id}</strong>
     </div>
 
-    <div class="result-section">
-      <div class="result-title">Fields Propagated (${result.fields_propagated.length})</div>
-      <div class="tag-list">
+    <div style="margin-bottom:12px;">
+      <div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">
+        Propagated Fields (${result.fields_propagated.length})
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
         ${result.fields_propagated.length > 0 
           ? result.fields_propagated.map(f => `<span class="badge badge-success">✓ ${f}</span>`).join("")
           : '<span class="badge badge-neutral">None</span>'}
       </div>
     </div>
 
-    <div class="result-section">
-      <div class="result-title">Fields Rejected by Inline Validation (${result.fields_rejected.length})</div>
-      <div class="tag-list">
+    <div style="margin-bottom:12px;">
+      <div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">
+        Rejected Fields (${result.fields_rejected.length})
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
         ${result.fields_rejected.length > 0 
           ? result.fields_rejected.map(f => `<span class="badge badge-danger">✗ ${f}</span>`).join("")
           : '<span class="badge badge-neutral">None (All fields valid)</span>'}
       </div>
     </div>
 
-    <div class="result-section">
-      <div class="result-title">Downstream Systems Written (${result.systems_written.length})</div>
-      <div class="tag-list">
+    <div style="margin-bottom:12px;">
+      <div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">
+        Systems Written (${result.systems_written.length})
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
         ${result.systems_written.length > 0
           ? result.systems_written.map(s => `<span class="badge badge-ashby">${s}</span>`).join("")
           : '<span class="badge badge-neutral">None</span>'}
@@ -348,10 +369,12 @@ function renderExecutionResult(result, dryRun, employee) {
 
   if (result.systems_failed && result.systems_failed.length > 0) {
     html += `
-      <div class="result-section">
-        <div class="result-title" style="color:var(--accent-rose);">Systems Failed (${result.systems_failed.length})</div>
-        <div class="tag-list">
-          ${result.systems_failed.map(s => `<span class="badge badge-danger">${s} (Max Retries Reached)</span>`).join("")}
+      <div style="margin-bottom:12px;">
+        <div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--error); text-transform:uppercase; margin-bottom:4px;">
+          Failed Systems (${result.systems_failed.length})
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          ${result.systems_failed.map(s => `<span class="badge badge-danger">${s} (Max Retries)</span>`).join("")}
         </div>
       </div>
     `;
@@ -359,11 +382,11 @@ function renderExecutionResult(result, dryRun, employee) {
 
   if (result.conflict_resolution) {
     html += `
-      <div class="result-section" style="background:rgba(99,102,241,0.08); padding:12px; border-radius:8px; border:1px solid rgba(99,102,241,0.2);">
-        <div class="result-title" style="color:var(--accent-cyan);">Gemini Identity Conflict Resolution</div>
-        <div style="font-size:0.85rem;">
+      <div style="background:rgba(194,65,12,0.1); padding:10px; border-radius:6px; border:1px solid rgba(194,65,12,0.25); margin-top:8px;">
+        <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--primary); font-weight:600;">Gemini Conflict Evaluation</div>
+        <div style="font-size:0.8rem; margin-top:3px;">
           Decision: <strong>${result.conflict_resolution.decision}</strong> | Confidence: <strong>${(result.conflict_resolution.confidence * 100).toFixed(0)}%</strong>
-          <p style="margin-top:4px; color:var(--text-secondary);">${result.conflict_resolution.reasoning}</p>
+          <p style="margin-top:2px; color:var(--text-variant); font-size:0.78rem;">${result.conflict_resolution.reasoning}</p>
         </div>
       </div>
     `;
@@ -379,7 +402,7 @@ async function loadEmployees() {
     const employees = await res.json();
 
     if (employees.length === 0) {
-      employeesTbody.innerHTML = '<tr><td colspan="7" class="text-center">No employee records in store. Click "Seed Demo" to load sample records.</td></tr>';
+      employeesTbody.innerHTML = '<tr><td colspan="7" class="text-center p-4">No employee records in store. Click "Seed Demo" to load data.</td></tr>';
       return;
     }
 
@@ -389,10 +412,10 @@ async function loadEmployees() {
         <td>${emp.legal_first_name} ${emp.legal_last_name}</td>
         <td>
           <div>${emp.position_title || "N/A"}</div>
-          <span style="font-size:0.75rem; color:var(--text-muted);">${emp.department || "General"}</span>
+          <span style="font-size:0.72rem; color:var(--text-muted);">${emp.department || "General"}</span>
         </td>
-        <td>${emp.start_date}</td>
-        <td class="mono">${emp.work_email || '<span style="color:var(--text-muted);">Unassigned (Pre-Hire)</span>'}</td>
+        <td class="mono">${emp.start_date}</td>
+        <td class="mono">${emp.work_email || '<span style="color:var(--text-muted);">Unassigned</span>'}</td>
         <td>
           <span class="badge ${emp.source_system === 'ASHBY' ? 'badge-ashby' : 'badge-workday'}">
             ${emp.source_system}
@@ -406,7 +429,7 @@ async function loadEmployees() {
   }
 }
 
-// Load Ledger & Needs Attention
+// Load Ledger & Triage
 async function loadLedger() {
   try {
     const res = await fetch(`${API_BASE}/api/ledger`);
@@ -422,7 +445,7 @@ async function loadLedger() {
     }
 
     if (entries.length === 0) {
-      ledgerTbody.innerHTML = '<tr><td colspan="7" class="text-center">Ledger is empty. No downstream writes have been dispatched yet.</td></tr>';
+      ledgerTbody.innerHTML = '<tr><td colspan="7" class="text-center p-4">Ledger is empty. No downstream writes recorded yet.</td></tr>';
       return;
     }
 
@@ -435,10 +458,10 @@ async function loadLedger() {
             ${e.status}
           </span>
         </td>
-        <td>${e.attempt_count} / 3</td>
+        <td class="mono">${e.attempt_count} / 3</td>
         <td class="mono">${e.system_ref_id || '—'}</td>
-        <td style="font-size:0.75rem; color:var(--text-muted);">${e.updated_at ? new Date(e.updated_at).toLocaleTimeString() : '—'}</td>
-        <td style="color:var(--accent-rose); font-size:0.8rem;">${e.error_message || '<span style="color:var(--text-muted);">None</span>'}</td>
+        <td class="mono" style="font-size:0.75rem; color:var(--text-muted);">${e.updated_at ? new Date(e.updated_at).toLocaleTimeString() : '—'}</td>
+        <td style="color:var(--error); font-size:0.8rem;">${e.error_message || '<span style="color:var(--text-muted);">None</span>'}</td>
       </tr>
     `).join("");
   } catch (e) {
@@ -455,7 +478,7 @@ async function loadAuditLogs(actionFilter = "") {
     const logs = await res.json();
 
     if (logs.length === 0) {
-      auditFeedList.innerHTML = '<div class="text-center p-4">No audit entries recorded yet.</div>';
+      auditFeedList.innerHTML = '<div class="text-center p-4">No audit log entries recorded yet.</div>';
       return;
     }
 
@@ -463,25 +486,25 @@ async function loadAuditLogs(actionFilter = "") {
       let badgeClass = "badge-neutral";
       if (l.action === "FIELD_CHANGE_PROPAGATED") badgeClass = "badge-success";
       if (l.action === "VALIDATION_REJECTED") badgeClass = "badge-danger";
-      if (l.action === "CLAUDE_CONFLICT_RESOLVED") badgeClass = "badge-ashby";
-      if (l.action === "NEEDS_HUMAN_REVIEW") badgeClass = "badge-warning";
+      if (l.action === "CLAUDE_CONFLICT_RESOLVED") badgeClass = "badge-warning";
+      if (l.action === "NEEDS_HUMAN_REVIEW") badgeClass = "badge-danger";
 
       return `
         <div class="audit-entry-card">
-          <div class="audit-header">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <span class="badge ${badgeClass}">${l.action}</span>
-            <span style="font-size:0.75rem; color:var(--text-muted);">${new Date(l.timestamp).toLocaleString()}</span>
+            <span class="mono" style="font-size:0.72rem; color:var(--text-muted);">${new Date(l.timestamp).toLocaleString()}</span>
           </div>
-          <div class="audit-meta">
+          <div style="display:flex; gap:12px; font-size:0.8rem; color:var(--text-variant); font-family:var(--font-mono);">
             <span>Event: <strong>${l.event_id}</strong></span>
             <span>Employee: <strong>${l.employee_id}</strong></span>
             ${l.target_system ? `<span>Target: <strong>${l.target_system}</strong></span>` : ''}
-            <span>Trigger: <code class="mono">${l.triggered_by}</code></span>
+            <span>Trigger: <code>${l.triggered_by}</code></span>
           </div>
           ${(l.before_state || l.after_state) ? `
             <div class="audit-diff">
-              ${l.before_state ? `<div><span style="color:var(--accent-rose);">- Before:</span> ${JSON.stringify(l.before_state)}</div>` : ''}
-              ${l.after_state ? `<div><span style="color:var(--accent-emerald);">+ After:</span> ${JSON.stringify(l.after_state)}</div>` : ''}
+              ${l.before_state ? `<div class="diff-remove">- Before: ${JSON.stringify(l.before_state)}</div>` : ''}
+              ${l.after_state ? `<div class="diff-add">+ After: ${JSON.stringify(l.after_state)}</div>` : ''}
             </div>
           ` : ''}
         </div>
@@ -492,7 +515,7 @@ async function loadAuditLogs(actionFilter = "") {
   }
 }
 
-// AI Lab Defaults & Handler
+// AI Conflict Lab Defaults & Handler
 function initAiLabDefaults() {
   const sampleA = {
     employee_id: "emp_2001",
@@ -538,6 +561,46 @@ function initAiLabDefaults() {
 
   aiRecA.value = JSON.stringify(sampleA, null, 2);
   aiRecB.value = JSON.stringify(sampleB, null, 2);
+
+  // Set default gauge position
+  setAiGauge(0, "Awaiting Evaluation", "Click 'Resolve with Gemini' to execute confidence-gated deduplication.", "waiting");
+}
+
+function setAiGauge(confidenceRatio, decision, reasoning, stateType = "success") {
+  const pct = Math.round(confidenceRatio * 100);
+  aiLabConfidence.textContent = `${pct}%`;
+
+  // Circumference = 2 * PI * 40 = 251.2
+  const offset = 251.2 * (1 - confidenceRatio);
+  aiGaugeCircle.style.strokeDashoffset = offset;
+
+  if (stateType === "same_person") {
+    aiGaugeCircle.setAttribute("stroke", "#4edea3");
+    aiDecisionBox.style.background = "rgba(0,125,85,0.2)";
+    aiDecisionBox.style.borderColor = "var(--tertiary-container)";
+    aiDecisionIcon.style.color = "var(--tertiary)";
+    aiDecisionIcon.textContent = "check_circle";
+    aiLabDecisionBadge.style.color = "var(--tertiary)";
+    aiLabDecisionBadge.textContent = "SAME_PERSON (Auto-Merge)";
+  } else if (stateType === "different_person") {
+    aiGaugeCircle.setAttribute("stroke", "#ffb59d");
+    aiDecisionBox.style.background = "rgba(194,65,12,0.2)";
+    aiDecisionBox.style.borderColor = "var(--primary-container)";
+    aiDecisionIcon.style.color = "var(--primary)";
+    aiDecisionIcon.textContent = "swap_horiz";
+    aiLabDecisionBadge.style.color = "var(--primary)";
+    aiLabDecisionBadge.textContent = "DIFFERENT_PERSON (Distinct Records)";
+  } else {
+    aiGaugeCircle.setAttribute("stroke", "#ffb4ab");
+    aiDecisionBox.style.background = "rgba(147,0,10,0.2)";
+    aiDecisionBox.style.borderColor = "var(--error-container)";
+    aiDecisionIcon.style.color = "var(--error)";
+    aiDecisionIcon.textContent = "warning";
+    aiLabDecisionBadge.style.color = "var(--error)";
+    aiLabDecisionBadge.textContent = stateType === "waiting" ? "AWAITING EVALUATION" : "NEEDS_HUMAN_REVIEW (Gated)";
+  }
+
+  aiLabReasoning.textContent = reasoning;
 }
 
 async function handleRunAiLab() {
@@ -561,30 +624,19 @@ async function handleRunAiLab() {
     });
     const resolution = await res.json();
 
-    aiLabResultBox.style.display = "block";
-    const confPct = Math.round((resolution.confidence || 0) * 100);
-    aiLabConfidence.textContent = `${confPct}%`;
-    aiLabProgressFill.style.width = `${confPct}%`;
-
-    if (resolution.decision === "same_person") {
-      aiLabDecisionBadge.className = "badge badge-success";
-      aiLabDecisionBadge.textContent = "SAME PERSON (Auto-Resolve)";
-    } else if (resolution.decision === "different_person") {
-      aiLabDecisionBadge.className = "badge badge-ashby";
-      aiLabDecisionBadge.textContent = "DIFFERENT PERSON (Independent Hires)";
-    } else {
-      aiLabDecisionBadge.className = "badge badge-warning";
-      aiLabDecisionBadge.textContent = "NEEDS HUMAN REVIEW (Gated)";
-    }
-
-    aiLabReasoning.textContent = resolution.reasoning || "No explanation provided.";
+    setAiGauge(
+      resolution.confidence || 0,
+      resolution.decision,
+      resolution.reasoning || "No explanation provided.",
+      resolution.decision
+    );
   } catch (e) {
     alert("Gemini AI resolution error: " + e);
   } finally {
     btnRunAiLab.disabled = false;
     btnRunAiLab.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-      <span>Resolve Conflict with Gemini</span>
+      <span>Resolve with Gemini</span>
+      <span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span>
     `;
   }
 }
@@ -592,27 +644,25 @@ async function handleRunAiLab() {
 // Load Systems Health
 function loadSystems() {
   const systems = [
-    { name: "Ashby", role: "ATS (Applicant Tracking)", writes: "Inbound Events", icon: "📄", status: "ONLINE", fields: "Pre-hire name, address, start date" },
-    { name: "Workday", role: "HRIS System of Record", writes: "Full Employee Record", icon: "🏢", status: "ONLINE", fields: "Legal identity, worker ID, hierarchy" },
-    { name: "Okta", role: "Identity Provider & SSO", writes: "Identity & Work Email", icon: "🔑", status: "ONLINE", fields: "Work email, SSO groups, status" },
-    { name: "Lumos", role: "Access Governance", writes: "Role Entitlements", icon: "🛡️", status: "ONLINE", fields: "App assignments, access gates" },
-    { name: "expoIT", role: "Hardware Logistics", writes: "Shipment Orders", icon: "💻", status: "ONLINE", fields: "Hardware specs, shipping address" },
-    { name: "Cohort Tracker", role: "Onboarding Tracker", writes: "Checklists & Milestones", icon: "📋", status: "ONLINE", fields: "Onboarding readiness milestones" },
+    { name: "Ashby", role: "ATS (Applicant Tracking)", writes: "Inbound Events", status: "ONLINE", fields: "Pre-hire name, address, start date" },
+    { name: "Workday", role: "HRIS System of Record", writes: "Full Employee Record", status: "ONLINE", fields: "Legal identity, worker ID, hierarchy" },
+    { name: "Okta", role: "Identity Provider & SSO", writes: "Identity & Work Email", status: "ONLINE", fields: "Work email, SSO groups, status" },
+    { name: "Lumos", role: "Access Governance", writes: "Role Entitlements", status: "ONLINE", fields: "App assignments, access gates" },
+    { name: "expoIT", role: "Hardware Logistics", writes: "Shipment Orders", status: "ONLINE", fields: "Hardware specs, shipping address" },
+    { name: "Cohort Tracker", role: "Onboarding Tracker", writes: "Checklists & Milestones", status: "ONLINE", fields: "Onboarding readiness milestones" },
   ];
 
   const grid = document.getElementById("systems-grid");
   grid.innerHTML = systems.map(s => `
-    <div class="system-card">
-      <div class="system-card-header">
-        <div>
-          <div class="system-name">${s.icon} ${s.name}</div>
-          <div class="system-role">${s.role}</div>
-        </div>
+    <div class="glass-panel" style="padding:18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="font-family:var(--font-headline); font-size:1.05rem;">${s.name}</h3>
         <span class="badge badge-success">${s.status}</span>
       </div>
-      <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:10px;">
+      <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">${s.role}</div>
+      <div style="font-size:0.8rem; color:var(--text-variant); margin-top:10px;">
         <div><strong>Writes:</strong> ${s.writes}</div>
-        <div style="margin-top:4px;"><strong>Fields:</strong> ${s.fields}</div>
+        <div style="margin-top:2px;"><strong>Fields:</strong> ${s.fields}</div>
       </div>
     </div>
   `).join("");
