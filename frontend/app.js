@@ -1,6 +1,15 @@
 // BetterUp Sync Engine Frontend Application
 
-const API_BASE = "";
+function getApiBase() {
+  const custom = localStorage.getItem("betterup_api_base");
+  if (custom) return custom.replace(/\/$/, "");
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "";
+  }
+  return window.DEFAULT_API_BACKEND_URL || "";
+}
+
+const API_BASE = getApiBase();
 
 // State
 let currentSamples = [];
@@ -116,6 +125,22 @@ function initEventListeners() {
       loadAllData();
     } catch (e) {
       alert("Failed to reset data: " + e);
+    }
+  });
+
+  document.getElementById("btn-config-api").addEventListener("click", () => {
+    const current = localStorage.getItem("betterup_api_base") || "";
+    const updated = prompt(
+      "Enter your Railway Backend API URL (e.g. https://betterup-backend.up.railway.app)\nLeave blank to use relative / local API:",
+      current
+    );
+    if (updated !== null) {
+      if (updated.trim()) {
+        localStorage.setItem("betterup_api_base", updated.trim());
+      } else {
+        localStorage.removeItem("betterup_api_base");
+      }
+      window.location.reload();
     }
   });
 
