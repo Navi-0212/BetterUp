@@ -1,12 +1,12 @@
 # BetterUp Sync Engine — Change Propagation & Identity Intelligence
 
-[![Live Demo on Vercel](https://img.shields.io/badge/Vercel-Live%20Dashboard-black?logo=vercel&style=for-the-badge)](https://better-up-ebon.vercel.app/)
+[![Live Demo on Vercel](https://img.shields.io/badge/Vercel-Live%20Dashboard-black?logo=vercel&style=for-the-badge)](https://better-up-git-main-naveen-k-n-s-projects.vercel.app/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%20%7C%203.14-blue?logo=python&style=for-the-badge)](https://www.python.org/)
 [![Gemini 2.5 Flash](https://img.shields.io/badge/AI-Gemini%202.5%20Flash-orange?logo=google&style=for-the-badge)](https://ai.google.dev/)
 
 An event-driven Change Propagation engine designed for BetterUp onboarding lifecycle orchestration across Ashby (ATS), Workday (HRIS), Okta (IdP), Lumos (Access Governance), expoIT (Hardware Logistics), and Cohort Tracker.
 
-🌐 **Live Deployed Dashboard**: [https://better-up-ebon.vercel.app/](https://better-up-ebon.vercel.app/)
+🌐 **Live Deployed Dashboard**: [https://better-up-git-main-naveen-k-n-s-projects.vercel.app/](https://better-up-git-main-naveen-k-n-s-projects.vercel.app/)
 
 ---
 
@@ -91,7 +91,7 @@ cp .env.example .env
 
 ### 1. Live Web Dashboard (Vercel)
 The interactive dashboard is live on Vercel:
-🌐 **[https://better-up-ebon.vercel.app/](https://better-up-ebon.vercel.app/)**
+🌐 **[https://better-up-git-main-naveen-k-n-s-projects.vercel.app/](https://better-up-git-main-naveen-k-n-s-projects.vercel.app/)**
 
 ### 2. Local Backend API & Dashboard
 Launch locally on [http://127.0.0.1:8000](http://127.0.0.1:8000):
