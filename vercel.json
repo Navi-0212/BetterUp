@@ -1,14 +1,12 @@
 {
-  "version": 2,
   "cleanUrls": true,
-  "public": true,
   "rewrites": [
     {
       "source": "/static/(.*)",
       "destination": "/frontend/$1"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!frontend/).*)",
       "destination": "/frontend/index.html"
     }
   ],
