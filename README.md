@@ -136,6 +136,54 @@ pytest -m integration -v
 
 ---
 
+## Technology Stack
+
+| Layer | Technology | Purpose & Architectural Role |
+|---|---|---|
+| **Core Runtime** | **Python 3.11+ / 3.14** | Primary execution runtime for event normalization, validation, and fan-out. |
+| **Data Modeling** | **Pydantic v2** | Canonical schema definitions, field serialization, and validation boundary enforcement. |
+| **AI Intelligence** | **Google Gemini 2.5 Flash** | High-accuracy structured JSON disambiguation for fuzzy identity collisions with confidence gating. |
+| **Agent Protocols** | **Model Context Protocol (MCP)** | Stdio MCP server exposing identity resolution tools directly to AI desktop clients and IDE subagents. |
+| **Backend Framework** | **FastAPI & Uvicorn** | High-performance async REST web framework running on Railway with dynamic `$PORT` and health checks. |
+| **Frontend UI** | **Vanilla ES6+ JS & HTML5** | Zero-dependency, lightweight single-page application dashboard with dynamic backend routing. |
+| **Styling & Aesthetics** | **Vanilla CSS3 Custom Tokens** | "Obsidian Ember Refined" glassmorphic dark design system with Outfit, Inter, and JetBrains Mono typography. |
+| **Testing Harness** | **Pytest** | 38 automated test cases covering validation, idempotency, retry backoffs, MCP, and live Gemini API. |
+| **Cloud Hosting** | **Railway (Backend) & Vercel (Frontend)** | Dual cloud hosting setup with live edge routing and environment isolation. |
+
+---
+
+## Scalability & Productionization Roadmap
+
+The system is designed with strict layer separation and dependency inversion, providing a clean pathway to enterprise-scale deployment:
+
+```mermaid
+graph LR
+    subgraph Prototype ["Single-Node Prototype"]
+        F1["Atomic JSON Storage"]
+        F2["In-Memory Connectors"]
+        F3["Synchronous Execution"]
+    end
+
+    subgraph EnterpriseScale ["Target Production Architecture"]
+        T1["PostgreSQL / DynamoDB (ACID & Sharding)"]
+        T2["Redis Cluster (Distributed Locks & Idempotency)"]
+        T3["Temporal.io / Celery (Durable Workflow Engine)"]
+        T4["Apache Kafka / AWS SQS (Message Broker Ingestion)"]
+        T5["Live SCIM 2.0 / OAuth2 Connectors"]
+    end
+
+    Prototype -.->|Extensibility Path| EnterpriseScale
+```
+
+### High-Level Extensibility Scope:
+1. **High-Throughput Ingestion (Kafka / SQS)**: Wrap `normalize_event` in message broker consumers to handle tens of thousands of webhook events per second with automatic Dead-Letter Queue (DLQ) triage for human reviews.
+2. **Distributed Persistence & Redis Caching**: Migrate `StateStore` to PostgreSQL/DynamoDB and replace file-based ledger checks with a Redis Cluster (`SETNX` with TTLs) for sub-millisecond duplicate suppression.
+3. **Durable Orchestration (Temporal.io / Celery)**: Replace synchronous loop retries with durable execution workflows that pause and resume automatically during downstream provider outages without losing state.
+4. **Vector Search & Historical RAG**: Enhance pre-filtering using semantic embedding search (e.g. `text-embedding-004`) and historical hire context to disambiguate name collisions across global subsidiaries with $>99.9\%$ precision.
+5. **Production Connectors**: Subclass `BaseConnector` to connect live SCIM 2.0 and REST endpoints for Okta, Workday, Lumos, and expoIT with zero modifications to core engine logic.
+
+---
+
 ## Project Structure
 
 ```
