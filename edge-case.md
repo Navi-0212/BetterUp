@@ -23,21 +23,22 @@ This document catalogs all critical edge cases across the data lifecycle of the 
 | **E-DUP-01** | **Same Employee ID Update** | Incoming candidate has identical `employee_id` as existing record | `is_near_duplicate` returns `False` | Explicit check: `if candidate.employee_id == existing.employee_id: return False`. This is a normal update, not an ambiguous conflict. | `test_claude_conflict.py` |
 | **E-DUP-02** | **Different Start Dates** | Candidate has similar name but different `start_date` (e.g. 2026-09-01 vs 2026-10-15) | `is_near_duplicate` returns `False` | Distinct hire cohort filter: `if candidate.start_date != existing.start_date: return False`. Prevents false positive LLM invocations. | `test_claude_conflict.py` |
 | **E-DUP-03** | **Exact Name Match** | Incoming name is character-for-character identical (case-insensitive) | `is_near_duplicate` returns `False` | Exact match filter: `if name_a == name_b: return False`. Handled as regular sync, not ambiguous. | `test_claude_conflict.py` |
-| **E-DUP-04** | **Similarity Ratio Boundary (0.749 vs 0.750)** | `SequenceMatcher.ratio()` yields exactly `0.749` vs `0.750` | `< 0.75` proceeds directly; $\ge 0.75$ triggers Claude | Strict numerical comparison: `ratio >= 0.75`. Ensures deterministic boundary behavior. | `test_claude_conflict.py` |
+| **E-DUP-04** | **Similarity Ratio Boundary (0.749 vs 0.750)** | `SequenceMatcher.ratio()` yields exactly `0.749` vs `0.750` | `< 0.75` proceeds directly; $\ge 0.75$ triggers Gemini LLM | Strict numerical comparison: `ratio >= 0.75`. Ensures deterministic boundary behavior. | `test_claude_conflict.py` |
 | **E-DUP-05** | **Whitespace & Case Variations** | Names have irregular whitespace (`"  Sanjay   Iyer "`) or mixed casing (`"sAnJaY IYER"`) | Normalized before similarity calculation | Names are stripped and lowercased: `f"{first} {last}".lower().strip()` before computing ratio. | `test_claude_conflict.py` |
-| **E-DUP-06** | **Multiple Near-Duplicate Matches** | New hire matches 2 or more existing employees in `StateStore` | Claude evaluated against all candidate matches | Engine aggregates conflicts; any unresolved conflict halts propagation and flags `NEEDS_HUMAN_REVIEW`. | `test_claude_conflict.py` |
+| **E-DUP-06** | **Multiple Near-Duplicate Matches** | New hire matches 2 or more existing employees in `StateStore` | Gemini evaluated against all candidate matches | Engine aggregates conflicts; any unresolved conflict halts propagation and flags `NEEDS_HUMAN_REVIEW`. | `test_claude_conflict.py` |
 
 ---
 
-## 3. Claude Conflict Resolution & Safety Gating Edge Cases
+## 3. Google Gemini Conflict Resolution & Safety Gating Edge Cases
 
 | ID | Scenario | Trigger Condition | System Behavior | Mitigation & Handling | Test Reference |
 |---|---|---|---|---|---|
-| **E-LLM-01** | **Low Confidence Response** | Claude returns `confidence: 0.65` with `decision: "same_person"` | Force-overridden to `needs_human_review` | Safety rule: If `confidence < 0.70`, override `decision = "needs_human_review"`. Prevents low-confidence auto-merging. | `test_claude_conflict.py` |
-| **E-LLM-02** | **Malformed JSON from LLM** | Claude returns markdown fences, conversational filler, or invalid JSON syntax | Parsing failure triggers fallback to `needs_human_review` | `try/except json.JSONDecodeError` catches syntax errors; creates fallback `ConflictResolution(decision="needs_human_review", confidence=0.0, reasoning="JSON parse error")`. | `test_claude_conflict.py` |
-| **E-LLM-03** | **Unexpected Decision String** | Claude returns `decision: "maybe"` or non-standard enum | Schema validation triggers fallback | Pydantic validation on `ConflictResolution` catches invalid literals, defaulting to `needs_human_review`. | `test_claude_conflict.py` |
-| **E-LLM-04** | **API Rate Limit / Timeout / Outage** | Anthropic API returns HTTP 429 / 500 or network timeout | Exception caught gracefully | Connector wraps API call in `try/except anthropic.APIError`; logs error and safely flags `NEEDS_HUMAN_REVIEW` without crashing engine. | `test_claude_conflict.py` |
-| **E-LLM-05** | **Confidence Out of Bounds** | Claude returns `confidence: 1.5` or `-0.1` | Clamped / Validated via Pydantic | Pydantic field constraint `Field(ge=0.0, le=1.0)` enforces valid probability range. | `test_claude_conflict.py` |
+| **E-LLM-01** | **Low Confidence Response** | Gemini returns `confidence: 0.65` with `decision: "same_person"` | Force-overridden to `needs_human_review` | Safety rule: If `confidence < 0.70`, override `decision = "needs_human_review"`. Prevents low-confidence auto-merging. | `test_claude_conflict.py` |
+| **E-LLM-02** | **Malformed JSON from LLM** | Gemini returns markdown fences, conversational filler, or invalid JSON syntax | Parsing failure triggers fallback to `needs_human_review` | `try/except json.JSONDecodeError` catches syntax errors; creates fallback `ConflictResolution(decision="needs_human_review", confidence=0.0, reasoning="JSON parse error")`. | `test_claude_conflict.py` |
+| **E-LLM-03** | **Unexpected Decision String** | Gemini returns `decision: "maybe"` or non-standard enum | Schema validation triggers fallback | Pydantic validation on `ConflictResolution` catches invalid literals, defaulting to `needs_human_review`. | `test_claude_conflict.py` |
+| **E-LLM-04** | **API Rate Limit / Timeout / Outage** | Google Gemini API returns HTTP 429 / 500 or network timeout | Exception caught gracefully | Connector wraps API call in `try/except Exception`; logs error and safely flags `NEEDS_HUMAN_REVIEW` without crashing engine. | `test_claude_conflict.py` |
+| **E-LLM-05** | **Confidence Out of Bounds** | Gemini returns `confidence: 1.5` or `-0.1` | Clamped / Validated via Pydantic | Pydantic field constraint `Field(ge=0.0, le=1.0)` enforces valid probability range. | `test_claude_conflict.py` |
+| **E-LLM-06** | **Air-Gapped Test Isolation** | Running unit tests in air-gapped CI/CD without API keys | `FakeGeminiClient` injected via `conftest.py` | Zero network dependency; canned JSON fixtures return deterministic outcomes in $<1.5\text{s}$. | `test_claude_conflict.py` |
 
 ---
 
@@ -65,38 +66,53 @@ This document catalogs all critical edge cases across the data lifecycle of the 
 
 ---
 
-## 6. Persistence & Concurrency Edge Cases
+## 6. Persistence & Audit Log Resilience Edge Cases
 
 | ID | Scenario | Trigger Condition | System Behavior | Mitigation & Handling | Test Reference |
 |---|---|---|---|---|---|
 | **E-STO-01** | **Missing Data Directory on First Run** | `data/` directory does not exist | Directory created automatically | `StateStore.__init__` executes `self.data_dir.mkdir(parents=True, exist_ok=True)`. | `test_validation.py` |
 | **E-STO-02** | **Corrupted or Empty JSON State Files** | `employees.json` or `ledger.json` contains 0 bytes or invalid JSON | Gracefully initialized to `{}` | `_load_json` catches `FileNotFoundError` and `JSONDecodeError`, falling back to empty mapping `{}`. | `test_validation.py` |
 | **E-STO-03** | **Concurrent Process Conflicts** | Two CLI instances writing to `data/` simultaneously | In-process safe file writing | Uses atomic write pattern (write to `.tmp` file then replace/rename) to prevent half-written files. | `test_idempotency.py` |
-| **E-STO-04** | **Audit Log Append Integrity** | Continuous appending to `audit_log.jsonl` | Append-only newline-delimited JSON | Open file with mode `"a"`, write single-line JSON + `\n`. | `test_validation.py` |
+| **E-STO-04** | **Audit Log Append Integrity** | Continuous appending to `audit_log.jsonl` | Append-only newline-delimited JSON | Open file with mode `"a"`, write single-line JSON + `\n`. | `test_audit_log.py` |
+| **E-STO-05** | **Corrupted Line in `audit_log.jsonl`** | File contains malformed/truncated line from external edit | Reader skips bad line, returns valid entries | `get_all_entries()` wraps line deserialization in `try/except json.JSONDecodeError` to prevent stream crashes. | `test_audit_log.py` |
 
 ---
 
-## 7. CLI & Operational Edge Cases
+## 7. Model Context Protocol (MCP) Server Edge Cases
 
 | ID | Scenario | Trigger Condition | System Behavior | Mitigation & Handling | Test Reference |
 |---|---|---|---|---|---|
-| **E-CLI-01** | **Dry-Run Mode (`--dry-run`)** | User specifies `--dry-run` flag | Simulates normalization, duplicate checks, validation, and diffing without mutating state | Bypasses all `connector.write()`, `store.save_employee()`, and `store.save_ledger_entry()` calls. Prints planned actions. | `test_validation.py` |
-| **E-CLI-02** | **Non-Existent Event File** | Path provided in `--event` does not exist | Returns exit code 1 with clean error message | Checks `os.path.exists(event_path)` before attempting execution. | `test_validation.py` |
-| **E-CLI-03** | **Exit Code Signaling** | Any write failed or flagged for human review | Returns exit code `1`; returns `0` only if all actions cleanly `ACKED` | Aggregates results in `main()`. If any item is `FAILED` or `needs_human_review`, returns 1. | `test_validation.py` |
-| **E-CLI-04** | **Custom Data Directory (`--data-dir`)** | User specifies `--data-dir /custom/path` | Directs all read/writes to custom directory | `StateStore(data_dir=Path(args.data_dir))` isolates runtime environments cleanly. | `test_validation.py` |
+| **E-MCP-01** | **Malformed Record Dicts in Tool Call** | External AI client calls `resolve_identity_conflict` with non-dict or malformed records | Returns safe `needs_human_review` payload without crashing server | MCP tool handler catches dictionary key/type errors and returns `{"decision": "needs_human_review", "confidence": 0.0, "reasoning": "Malformed record payload"}`. | `test_mcp_server.py` |
+| **E-MCP-02** | **SDK Version Deprecations** | MCP SDK 2.0 refactored `fastmcp` import paths | Pinned SDK version in requirements | `requirements.txt` pins `mcp>=1.2.0,<2.0.0` ensuring stability for stdio tool handlers. | `test_mcp_server.py` |
+| **E-MCP-03** | **Unauthenticated / Missing API Key in MCP** | Subagent invokes MCP tool without `GEMINI_API_KEY` | Gracefully flags for human review | Tool initializes `GeminiHandler` with fallback error trapping, returning actionable review advice. | `test_mcp_server.py` |
 
 ---
 
-## 8. Summary: Edge Case Validation Matrix
+## 8. CLI, Web Dashboard & Cloud Deployment Edge Cases
+
+| ID | Scenario | Trigger Condition | System Behavior | Mitigation & Handling | Test Reference |
+|---|---|---|---|---|---|
+| **E-CLI-01** | **Dry-Run Mode (`--dry-run`)** | User specifies `--dry-run` flag | Simulates normalization, duplicate checks, validation, and diffing without mutating state | Bypasses all `connector.write()`, `store.save_employee()`, and `store.save_ledger_entry()` calls. Prints planned actions. | `test_cli.py` |
+| **E-CLI-02** | **Non-Existent Event File** | Path provided in `--event` does not exist | Returns exit code 1 with clean error message | Checks `os.path.exists(event_path)` before attempting execution. | `test_cli.py` |
+| **E-CLI-03** | **Exit Code Signaling** | Any write failed or flagged for human review | Returns exit code `1`; returns `0` only if all actions cleanly `ACKED` | Aggregates results in `main()`. If any item is `FAILED` or `needs_human_review`, returns 1. | `test_cli.py` |
+| **E-CLI-04** | **Custom Data Directory (`--data-dir`)** | User specifies `--data-dir /custom/path` | Directs all read/writes to custom directory | `StateStore(data_dir=Path(args.data_dir))` isolates runtime environments cleanly. | `test_cli.py` |
+| **E-DEP-01** | **Dynamic Port Binding (Railway)** | Railway sets dynamic `$PORT` environment variable | Binds to `$PORT` automatically | `server.py` reads `int(os.environ.get("PORT", 8000))` and binds to `0.0.0.0`. | `server.py` |
+| **E-DEP-02** | **SPA Sub-Route 404s (Vercel)** | Direct navigation to deep URLs or asset requests on Vercel | Serves `index.html` via client-side routing | `vercel.json` specifies `"outputDirectory": "frontend"` and rewrites all non-static paths to `/index.html`. | `vercel.json` |
+| **E-DEP-03** | **CORS Request from Vercel to Railway** | Browser dispatches cross-origin fetch from Vercel frontend | Allowed with pre-flight response | `server.py` configures `CORSMiddleware` with `allow_origins=["*"]`, `allow_methods=["*"]`, and `allow_headers=["*"]`. | `server.py` |
+
+---
+
+## 9. Summary: Edge Case Filtration Pipeline
 
 ```mermaid
 graph TD
     subgraph EdgeCaseFilters["Edge Case Filtration Layers"]
-        EC1["1. Event Normalization: No-op delta drop (E-ING-01)"] --> EC2["2. Near-Duplicate Pre-Filter: Start date & ID checks (E-DUP-01..03)"]
-        EC2 --> EC3["3. LLM Safety Gate: Parse error & confidence < 0.7 (E-LLM-01..03)"]
+        EC1["1. Event Normalization: No-op delta drop (E-ING-01..05)"] --> EC2["2. Near-Duplicate Pre-Filter: Start date & ID checks (E-DUP-01..06)"]
+        EC2 --> EC3["3. Gemini AI Safety Gate: Parse error & confidence < 0.70 (E-LLM-01..06)"]
         EC3 --> EC4["4. Inline Validation: Malformed field drop (E-VAL-01..05)"]
         EC4 --> EC5["5. Idempotency Check: SHA-256 Ledger check (E-IDP-01)"]
-        EC5 --> EC6["6. Isolated Retry: System try/except + exponential backoff (E-IDP-02..04)"]
-        EC6 --> EC7["7. Status & Alerting: needs_attention() exposure (E-IDP-04, E-LLM-01)"]
+        EC5 --> EC6["6. Isolated Retry: System try/except + exp backoff (E-IDP-02..05)"]
+        EC6 --> EC7["7. Persistence & MCP: Safe writes & tool gating (E-STO-01..05, E-MCP-01..03)"]
+        EC7 --> EC8["8. Status & Alerting: needs_attention() & CLI codes (E-IDP-04, E-CLI-01..04, E-DEP-01..03)"]
     end
 ```
