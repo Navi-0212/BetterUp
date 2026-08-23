@@ -64,9 +64,9 @@ We deliberately **do not construct fictitious Ashby records or synthetic pre-hir
 
 ## AI tools used
 
-- **Google Antigravity IDE / Gemini 3.7 Flash**: Architectural planning, prompt engineering, code generation, refactoring, and test fixture construction.
+- **Developer AI Assistant (LLM Code Generation & Refactoring)**: Used for scaffolding repetitive boilerplate models, connector mock stubs, and unit test fixture templates.
 - **Google Gemini API (`google-genai` SDK / `gemini-2.5-flash`)**: Domain-specific identity conflict disambiguation using structured JSON outputs with confidence safety gating via `GeminiHandler`.
-- **Model Context Protocol (MCP) SDK**: stdio interface (`src/mcp_server.py`) exposing identity resolution tools directly to Claude Desktop / Gemini / IDE agents.
+- **Model Context Protocol (MCP) SDK**: stdio interface (`src/mcp_server.py`) exposing identity resolution tools directly to AI desktop clients and IDE agent toolchains.
 
 ---
 
